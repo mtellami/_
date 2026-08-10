@@ -12,6 +12,8 @@ export interface LoadSpecOptions {
   maxBytes?: number;
   timeoutMs?: number;
   fetchImpl?: typeof fetch;
+  /** When false (default), refusing to fetch specs from plain `http://` URLs. */
+  allowInsecureHttp?: boolean;
 }
 
 export function isHttpSource(source: string): boolean {
@@ -57,6 +59,11 @@ async function loadFromFile(source: string, options: LoadSpecOptions): Promise<L
 }
 
 async function loadFromHttp(source: string, options: LoadSpecOptions): Promise<LoadedSpec> {
+  if (options.allowInsecureHttp !== true && /^http:\/\//i.test(source)) {
+    throw new SpecLoadError(
+      `Refusing to fetch spec over insecure HTTP from "${source}"; set ALLOW_INSECURE_HTTP=true to allow it`,
+    );
+  }
   const fetchImpl = options.fetchImpl ?? fetch;
   const timeoutMs = options.timeoutMs ?? 30_000;
   const controller = new AbortController();

@@ -24,7 +24,16 @@ const MAX_DEREF_DEPTH = 30;
 
 type OpenApiDocument = Record<string, unknown>;
 
-export function parseOpenApiSpec(text: string, format?: "json" | "yaml"): ParsedSpec {
+export interface ParseOptions {
+  /** Origin (e.g. `https://api.example.com`) used to resolve relative server URLs. */
+  specOrigin?: string;
+}
+
+export function parseOpenApiSpec(
+  text: string,
+  format?: "json" | "yaml",
+  options: ParseOptions = {},
+): ParsedSpec {
   const document = parseDocument(text, format);
   assertOpenApiVersion(document);
 
@@ -33,7 +42,7 @@ export function parseOpenApiSpec(text: string, format?: "json" | "yaml"): Parsed
   const version = typeof info.version === "string" ? info.version : "unknown";
 
   const servers = Array.isArray(document.servers) ? (document.servers as unknown[]) : [];
-  const baseUrl = firstServerUrl(servers);
+  const baseUrl = firstServerUrl(servers, options.specOrigin);
 
   const paths = (document.paths ?? {}) as Record<string, unknown>;
   const usedNames = new Set<string>();
@@ -316,12 +325,22 @@ function assertOpenApiVersion(document: OpenApiDocument): void {
   }
 }
 
-function firstServerUrl(servers: unknown[]): string {
+function firstServerUrl(servers: unknown[], specOrigin?: string): string {
   const first = servers[0];
-  if (isObject(first) && typeof first.url === "string") {
+  if (!isObject(first) || typeof first.url !== "string" || first.url === "") {
+    return "";
+  }
+  if (/^https?:\/\//i.test(first.url)) {
     return first.url;
   }
-  return "";
+  if (specOrigin) {
+    try {
+      return new URL(first.url, specOrigin).toString();
+    } catch {
+      return first.url;
+    }
+  }
+  return first.url;
 }
 
 function tryJson(text: string): unknown {

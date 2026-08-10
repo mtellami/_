@@ -54,11 +54,7 @@ export class Logger {
     const line = `${stamp} ${level.toUpperCase()}${prefix} ${message}${
       args.length ? " " + fmt(args) : ""
     }`;
-    if (level === "error") {
-      process.stderr.write(line + "\n");
-    } else {
-      process.stdout.write(line + "\n");
-    }
+    process.stderr.write(line + "\n");
   }
 }
 

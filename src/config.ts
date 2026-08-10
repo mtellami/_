@@ -7,10 +7,14 @@ export interface BridgeConfig {
   source: string;
   baseUrlOverride?: string;
   timeoutMs: number;
-  maxResponseChars: number;
-  maxDepth: number;
-  maxArrayLength: number;
-  maxStringLength: number;
+  /** Response character budget. Unlimited when not set. */
+  maxResponseChars?: number;
+  /** Max JSON depth kept. Unlimited when not set. */
+  maxDepth?: number;
+  /** Max array elements kept per array. Unlimited when not set. */
+  maxArrayLength?: number;
+  /** Max length of an individual string value. Unlimited when not set. */
+  maxStringLength?: number;
   logLevel: LogLevel;
   serverName: string;
   serverVersion: string;
@@ -19,10 +23,6 @@ export interface BridgeConfig {
 
 export const DEFAULT_CONFIG = {
   timeoutMs: 30_000,
-  maxResponseChars: 200_000,
-  maxDepth: 8,
-  maxArrayLength: 100,
-  maxStringLength: 2_000,
   serverName: "openapi-mcp-bridge",
   serverVersion: "0.1.0",
 } as const;
@@ -39,14 +39,25 @@ const numberOrEmpty = (def: number) =>
     return Number.isFinite(n) ? n : def;
   }, z.number().min(0));
 
+const optionalNumber = z.preprocess((value) => {
+  if (value === undefined || value === null || value === "") {
+    return undefined;
+  }
+  if (typeof value === "number") {
+    return value;
+  }
+  const n = Number(value);
+  return Number.isFinite(n) ? n : undefined;
+}, z.number().min(0).optional());
+
 const EnvSchema = z.object({
-  OPENAPI_SOURCE: z.string().min(1, "OPENAPI_SOURCE is required"),
+  OPENAPI_SOURCE: z.string().min(1).optional(),
   API_BASE_URL: z.string().min(1).optional(),
   API_TIMEOUT_MS: numberOrEmpty(DEFAULT_CONFIG.timeoutMs),
-  API_MAX_RESPONSE_CHARS: numberOrEmpty(DEFAULT_CONFIG.maxResponseChars),
-  SANITIZE_MAX_DEPTH: numberOrEmpty(DEFAULT_CONFIG.maxDepth),
-  SANITIZE_MAX_ARRAY_LENGTH: numberOrEmpty(DEFAULT_CONFIG.maxArrayLength),
-  SANITIZE_MAX_STRING_LENGTH: numberOrEmpty(DEFAULT_CONFIG.maxStringLength),
+  API_MAX_RESPONSE_CHARS: optionalNumber,
+  SANITIZE_MAX_DEPTH: optionalNumber,
+  SANITIZE_MAX_ARRAY_LENGTH: optionalNumber,
+  SANITIZE_MAX_STRING_LENGTH: optionalNumber,
   LOG_LEVEL: z.string().optional(),
   SERVER_NAME: z.string().min(1).default(DEFAULT_CONFIG.serverName),
   SERVER_VERSION: z.string().min(1).default(DEFAULT_CONFIG.serverVersion),
@@ -70,8 +81,12 @@ export function loadConfig(env: RawEnv, cliSource?: string): BridgeConfig {
   }
 
   const parsed = result.data;
+  const source = cliSource ?? parsed.OPENAPI_SOURCE;
+  if (!source) {
+    throw new ConfigError("No spec source provided: use the --spec flag or set OPENAPI_SOURCE");
+  }
   return {
-    source: cliSource ?? parsed.OPENAPI_SOURCE,
+    source,
     baseUrlOverride: parsed.API_BASE_URL,
     timeoutMs: parsed.API_TIMEOUT_MS,
     maxResponseChars: parsed.API_MAX_RESPONSE_CHARS,

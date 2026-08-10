@@ -1,1 +1,2 @@
-export { prepareRequest, executeOperation } from "./executor.js";
+export { prepareRequest } from "./request.js";
+export { executeOperation } from "./executor.js";

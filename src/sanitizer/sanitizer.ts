@@ -1,8 +1,8 @@
 export interface SanitizeOptions {
-  maxChars: number;
-  maxDepth: number;
-  maxArrayLength: number;
-  maxStringLength: number;
+  maxChars?: number;
+  maxDepth?: number;
+  maxArrayLength?: number;
+  maxStringLength?: number;
 }
 
 export interface SanitizeResult {
@@ -17,23 +17,34 @@ interface WalkState {
   budget: number;
 }
 
+const NO_LIMIT = Number.POSITIVE_INFINITY;
+
 /**
  * Compacts and truncates an API response body before it is handed to the
  * LLM. JSON documents are walked with depth, array-length, string-length and
  * total-character budgets; non-JSON payloads fall back to plain truncation.
+ * Unset limits are treated as unlimited.
  */
 export function sanitizeResponse(raw: string, options: SanitizeOptions): SanitizeResult {
-  const { maxChars, maxDepth, maxArrayLength, maxStringLength } = options;
+  const { maxDepth, maxArrayLength, maxStringLength } = options;
+  const maxChars = options.maxChars ?? NO_LIMIT;
 
   let parsed: unknown;
   try {
     parsed = JSON.parse(raw);
   } catch {
-    return truncatePlain(raw, maxChars, maxStringLength);
+    return truncatePlain(raw, maxChars, maxStringLength ?? NO_LIMIT);
   }
 
   const state: WalkState = { truncated: false, budget: maxChars };
-  const compacted = compact(parsed, maxDepth, maxArrayLength, maxStringLength, state, 0);
+  const compacted = compact(
+    parsed,
+    maxDepth ?? NO_LIMIT,
+    maxArrayLength ?? NO_LIMIT,
+    maxStringLength ?? NO_LIMIT,
+    state,
+    0,
+  );
   const text = JSON.stringify(compacted);
   return { text, truncated: state.truncated };
 }
