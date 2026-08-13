@@ -1,5 +1,23 @@
 import type { JsonSchema } from "../types.js";
 
+const SCHEMA_MAP_KEYWORDS = ["properties", "patternProperties", "$defs", "definitions"] as const;
+
+const SCHEMA_ARRAY_KEYWORDS = ["allOf", "anyOf", "oneOf", "prefixItems", "items"] as const;
+
+const SCHEMA_KEYWORDS = [
+  "items",
+  "additionalProperties",
+  "unevaluatedProperties",
+  "additionalItems",
+  "unevaluatedItems",
+  "propertyNames",
+  "contains",
+  "not",
+  "if",
+  "then",
+  "else",
+] as const;
+
 /**
  * Normalizes an OpenAPI schema so it can be consumed by an Ajv draft-07
  * validator:
@@ -7,6 +25,10 @@ import type { JsonSchema } from "../types.js";
  * - OpenAPI 3.0 `nullable: true` becomes a `["<type>", "null"]` union.
  * - OpenAPI 3.0 boolean `exclusiveMinimum`/`exclusiveMaximum` markers are
  *   folded into the numeric draft-07 form.
+ *
+ * Sub-schemas in every schema-position keyword are normalized recursively,
+ * including `additionalProperties`, `patternProperties`, `$defs` and
+ * `if`/`then`/`else`.
  */
 export function normalizeOpenApiSchema(schema: JsonSchema): JsonSchema {
   const copy: JsonSchema = { ...schema };
@@ -35,25 +57,34 @@ export function normalizeOpenApiSchema(schema: JsonSchema): JsonSchema {
     delete copy.exclusiveMaximum;
   }
 
-  if (copy.properties) {
-    const properties: Record<string, JsonSchema> = {};
-    for (const [key, value] of Object.entries(copy.properties)) {
-      properties[key] = normalizeOpenApiSchema(value);
+  for (const keyword of SCHEMA_MAP_KEYWORDS) {
+    const map = copy[keyword] as Record<string, JsonSchema> | undefined;
+    if (map && typeof map === "object" && !Array.isArray(map)) {
+      for (const [key, value] of Object.entries(map)) {
+        if (isSchema(value)) {
+          map[key] = normalizeOpenApiSchema(value);
+        }
+      }
     }
-    copy.properties = properties;
   }
 
-  if (Array.isArray(copy.items)) {
-    copy.items = copy.items.map((item) => normalizeOpenApiSchema(item));
-  } else if (copy.items) {
-    copy.items = normalizeOpenApiSchema(copy.items);
+  for (const keyword of SCHEMA_ARRAY_KEYWORDS) {
+    const list = copy[keyword];
+    if (Array.isArray(list)) {
+      copy[keyword] = list.filter(isSchema).map((sub) => normalizeOpenApiSchema(sub));
+    }
   }
 
-  for (const keyword of ["allOf", "anyOf", "oneOf"] as const) {
-    if (Array.isArray(copy[keyword])) {
-      copy[keyword] = copy[keyword].map((sub) => normalizeOpenApiSchema(sub));
+  for (const keyword of SCHEMA_KEYWORDS) {
+    const value = copy[keyword];
+    if (isSchema(value)) {
+      copy[keyword] = normalizeOpenApiSchema(value);
     }
   }
 
   return copy;
+}
+
+function isSchema(value: unknown): value is JsonSchema {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
 }

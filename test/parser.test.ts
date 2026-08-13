@@ -143,6 +143,136 @@ components:
 `;
     assert.throws(() => parseOpenApiSpec(circular, "yaml"), SpecParseError);
   });
+
+  it("resolves security schemes onto protected operations", () => {
+    const protectedSpec = `
+openapi: "3.0.3"
+info: {title: X, version: "1"}
+paths:
+  /open:
+    get:
+      operationId: openEndpoint
+      security: []
+  /secure:
+    get:
+      operationId: secureEndpoint
+components:
+  securitySchemes:
+    ApiKeyAuth:
+      type: apiKey
+      in: header
+      name: X-API-Key
+    BearerAuth:
+      type: http
+      scheme: bearer
+security:
+  - BearerAuth: []
+`;
+    const parsed = parseOpenApiSpec(protectedSpec, "yaml");
+    const open = parsed.operations.find((op) => op.toolName === "openEndpoint");
+    assert.ok(open);
+    assert.deepEqual(open.security, []);
+
+    const secure = parsed.operations.find((op) => op.toolName === "secureEndpoint");
+    assert.ok(secure);
+    assert.deepEqual(secure.security, [{ type: "http", scheme: "bearer" }]);
+  });
+
+  it("inherits security declared at the path-item level", () => {
+    const spec = `
+openapi: "3.0.3"
+info: {title: X, version: "1"}
+paths:
+  /secure:
+    security:
+      - ApiKeyAuth: []
+    get:
+      operationId: secureEndpoint
+components:
+  securitySchemes:
+    ApiKeyAuth:
+      type: apiKey
+      in: header
+      name: X-API-Key
+`;
+    const parsed = parseOpenApiSpec(spec, "yaml");
+    const op = parsed.operations[0];
+    assert.ok(op);
+    assert.deepEqual(op.security, [{ type: "apiKey", name: "X-API-Key", in: "header" }]);
+  });
+
+  it("lets an explicit empty operation security override the path-item level", () => {
+    const spec = `
+openapi: "3.0.3"
+info: {title: X, version: "1"}
+paths:
+  /secure:
+    security:
+      - ApiKeyAuth: []
+    get:
+      operationId: secureEndpoint
+      security: []
+components:
+  securitySchemes:
+    ApiKeyAuth:
+      type: apiKey
+      in: header
+      name: X-API-Key
+`;
+    const parsed = parseOpenApiSpec(spec, "yaml");
+    const op = parsed.operations[0];
+    assert.ok(op);
+    assert.deepEqual(op.security, []);
+  });
+
+  it("resolves security schemes declared via $ref", () => {
+    const spec = `
+openapi: "3.0.3"
+info: {title: X, version: "1"}
+paths:
+  /secure:
+    get:
+      operationId: secureEndpoint
+components:
+  securitySchemes:
+    BearerAuth:
+      $ref: '#/components/securitySchemes/SharedBearer'
+    SharedBearer:
+      type: http
+      scheme: bearer
+security:
+  - BearerAuth: []
+`;
+    const parsed = parseOpenApiSpec(spec, "yaml");
+    const op = parsed.operations[0];
+    assert.ok(op);
+    assert.deepEqual(op.security, [{ type: "http", scheme: "bearer" }]);
+  });
+
+  it("applies per-operation security over the global requirement", () => {
+    const spec = `
+openapi: "3.0.3"
+info: {title: X, version: "1"}
+paths:
+  /pets:
+    get:
+      operationId: listPets
+      security:
+        - ApiKeyAuth: []
+components:
+  securitySchemes:
+    ApiKeyAuth:
+      type: apiKey
+      in: header
+      name: X-API-Key
+security:
+  - BearerAuth: []
+`;
+    const parsed = parseOpenApiSpec(spec, "yaml");
+    const op = parsed.operations[0];
+    assert.ok(op);
+    assert.deepEqual(op.security, [{ type: "apiKey", name: "X-API-Key", in: "header" }]);
+  });
 });
 
 describe("toToolName", () => {

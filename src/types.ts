@@ -42,6 +42,12 @@ export interface OperationRequestBody {
   schema?: JsonSchema;
 }
 
+export type SecurityScheme =
+  | { type: "apiKey"; name: string; in: "header" | "query" | "cookie" }
+  | { type: "http"; scheme: string }
+  | { type: "oauth2" }
+  | { type: "openIdConnect" };
+
 export interface ParsedOperation {
   toolName: string;
   method: HttpMethod;
@@ -51,6 +57,8 @@ export interface ParsedOperation {
   parameters: OperationParameter[];
   requestBody?: OperationRequestBody;
   baseUrl: string;
+  /** Security schemes this operation requires. Empty for public operations. */
+  security: SecurityScheme[];
 }
 
 export interface ParsedSpec {

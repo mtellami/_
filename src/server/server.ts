@@ -1,5 +1,6 @@
 import { McpServer, fromJsonSchema, type JsonSchemaType } from "@modelcontextprotocol/server";
 import type { ParsedOperation, ParsedSpec, RuntimeContext } from "../types.js";
+import { SpecParseError } from "../errors.js";
 import { buildInputSchema } from "../schema/index.js";
 import { validateData } from "../validator/index.js";
 import { executeOperation } from "../http/index.js";
@@ -23,6 +24,12 @@ export function createMcpServer(context: BridgeContext): McpServer {
     name: runtime.config.serverName,
     version: runtime.config.serverVersion,
   });
+
+  if (parsedSpec.operations.length > runtime.config.maxTools) {
+    const msg = `OpenAPI spec has ${parsedSpec.operations.length} operations, exceeding the maximum supported limit of ${runtime.config.maxTools}. Massive APIs with hundreds of endpoints are not supported yet to prevent LLM context overflow.`;
+    runtime.logger.error(msg);
+    throw new SpecParseError(msg);
+  }
 
   server.registerTool(
     "health",

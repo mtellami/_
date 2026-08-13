@@ -10,6 +10,7 @@ function makeOperation(overrides: Partial<ParsedOperation> = {}): ParsedOperatio
     path: "/pets/{petId}",
     baseUrl: "https://api.example.com",
     parameters: [],
+    security: [],
     ...overrides,
   };
 }

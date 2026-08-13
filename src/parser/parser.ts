@@ -1,4 +1,5 @@
 import { parse as parseYaml } from "yaml";
+import type { OpenAPIV3, OpenAPIV3_1 } from "openapi-types";
 import { SpecParseError } from "../errors.js";
 import type {
   HttpMethod,
@@ -7,6 +8,7 @@ import type {
   OperationRequestBody,
   ParsedOperation,
   ParsedSpec,
+  SecurityScheme,
 } from "../types.js";
 
 const HTTP_METHODS: HttpMethod[] = [
@@ -22,7 +24,7 @@ const HTTP_METHODS: HttpMethod[] = [
 
 const MAX_DEREF_DEPTH = 30;
 
-type OpenApiDocument = Record<string, unknown>;
+type OpenApiDocument = (OpenAPIV3.Document | OpenAPIV3_1.Document) & Record<string, unknown>;
 
 export interface ParseOptions {
   /** Origin (e.g. `https://api.example.com`) used to resolve relative server URLs. */
@@ -47,19 +49,27 @@ export function parseOpenApiSpec(
   const paths = (document.paths ?? {}) as Record<string, unknown>;
   const usedNames = new Set<string>();
   const operations: ParsedOperation[] = [];
+  const securitySchemes = extractSecuritySchemes(document);
 
   for (const [path, pathItem] of Object.entries(paths)) {
     if (!isObject(pathItem)) {
       continue;
     }
-    const sharedParameters = extractParameters(pathItem.parameters);
+    const sharedParameters = extractParameters(pathItem.parameters, document);
+    const pathItemSecurity = Array.isArray(pathItem.security) ? pathItem.security : undefined;
     for (const method of HTTP_METHODS) {
       const op = (pathItem as Record<string, unknown>)[method];
       if (!isObject(op)) {
         continue;
       }
+      const security = resolveSecurity(
+        op.security,
+        pathItemSecurity,
+        document.security,
+        securitySchemes,
+      );
       operations.push(
-        buildOperation(path, method, op, sharedParameters, document, baseUrl, usedNames),
+        buildOperation(path, method, op, sharedParameters, document, baseUrl, usedNames, security),
       );
     }
   }
@@ -143,12 +153,19 @@ function dereferenceSchemaInternal(
       schema.properties[key] = dereferenceSchemaInternal(value, root, seen, depth + 1);
     }
   }
-  if (Array.isArray(schema.items)) {
-    schema.items = schema.items.map((item) =>
-      dereferenceSchemaInternal(item, root, seen, depth + 1),
-    );
-  } else if (schema.items) {
-    schema.items = dereferenceSchemaInternal(schema.items, root, seen, depth + 1);
+  for (const keyword of ["items", "prefixItems"] as const) {
+    if (Array.isArray(schema[keyword])) {
+      schema[keyword] = schema[keyword].map((item) =>
+        dereferenceSchemaInternal(item as JsonSchema, root, seen, depth + 1),
+      );
+    } else if (isObject(schema[keyword])) {
+      schema[keyword] = dereferenceSchemaInternal(
+        schema[keyword] as JsonSchema,
+        root,
+        seen,
+        depth + 1,
+      );
+    }
   }
   for (const keyword of ["allOf", "anyOf", "oneOf"] as const) {
     if (Array.isArray(schema[keyword])) {
@@ -163,6 +180,35 @@ function dereferenceSchemaInternal(
       for (const [key, value] of Object.entries(defs)) {
         defs[key] = dereferenceSchemaInternal(value as JsonSchema, root, seen, depth + 1);
       }
+    }
+  }
+  for (const keyword of ["patternProperties"] as const) {
+    const map = schema[keyword];
+    if (isObject(map)) {
+      for (const [key, value] of Object.entries(map)) {
+        map[key] = dereferenceSchemaInternal(value as JsonSchema, root, seen, depth + 1);
+      }
+    }
+  }
+  for (const keyword of [
+    "additionalProperties",
+    "additionalItems",
+    "unevaluatedProperties",
+    "unevaluatedItems",
+    "propertyNames",
+    "contains",
+    "not",
+    "if",
+    "then",
+    "else",
+  ] as const) {
+    if (isObject(schema[keyword])) {
+      schema[keyword] = dereferenceSchemaInternal(
+        schema[keyword] as JsonSchema,
+        root,
+        seen,
+        depth + 1,
+      );
     }
   }
 
@@ -195,8 +241,9 @@ function buildOperation(
   root: OpenApiDocument,
   baseUrl: string,
   usedNames: Set<string>,
+  security: SecurityScheme[],
 ): ParsedOperation {
-  const ownParameters = extractParameters(operation.parameters);
+  const ownParameters = extractParameters(operation.parameters, root);
   const merged = mergeParameters(sharedParameters, ownParameters);
 
   const summary = typeof operation.summary === "string" ? operation.summary : undefined;
@@ -219,33 +266,42 @@ function buildOperation(
     parameters: merged,
     requestBody,
     baseUrl,
+    security,
   };
 }
 
-function extractParameters(value: unknown): OperationParameter[] {
+function extractParameters(value: unknown, root: OpenApiDocument): OperationParameter[] {
   if (!Array.isArray(value)) {
     return [];
   }
   const parameters: OperationParameter[] = [];
   for (const item of value) {
-    if (!isObject(item)) {
+    let resolved = item;
+    if (isObject(item) && typeof item.$ref === "string") {
+      const target = resolveLocalRef(root, item.$ref);
+      if (!target) {
+        continue;
+      }
+      resolved = target;
+    }
+    if (!isObject(resolved)) {
       continue;
     }
-    const name = item.name;
-    const location = item.in;
+    const name = resolved.name;
+    const location = resolved.in;
     if (typeof name !== "string" || typeof location !== "string") {
       continue;
     }
     if (!["query", "header", "path", "cookie"].includes(location)) {
       continue;
     }
-    const schema = item.schema ?? {};
+    const rawSchema = isObject(resolved.schema) ? (resolved.schema as JsonSchema) : undefined;
     parameters.push({
       name,
       in: location as OperationParameter["in"],
-      required: item.required === true,
-      description: typeof item.description === "string" ? item.description : undefined,
-      schema: isObject(schema) ? (schema as JsonSchema) : undefined,
+      required: resolved.required === true,
+      description: typeof resolved.description === "string" ? resolved.description : undefined,
+      schema: rawSchema ? dereferenceSchema(rawSchema, root) : undefined,
     });
   }
   return parameters;
@@ -285,6 +341,95 @@ function extractRequestBody(
   };
 }
 
+function extractSecuritySchemes(document: OpenApiDocument): Map<string, SecurityScheme> {
+  const components = isObject(document.components) ? document.components : {};
+  const raw = isObject(components.securitySchemes)
+    ? (components.securitySchemes as Record<string, unknown>)
+    : {};
+  const schemes = new Map<string, SecurityScheme>();
+  const seen = new Set<string>();
+  for (const [name, value] of Object.entries(raw)) {
+    const scheme = parseSecurityScheme(value, document, seen, name);
+    if (scheme) {
+      schemes.set(name, scheme);
+    }
+  }
+  return schemes;
+}
+
+function parseSecurityScheme(
+  value: unknown,
+  root: OpenApiDocument,
+  seen: Set<string>,
+  name: string,
+): SecurityScheme | undefined {
+  if (!isObject(value)) {
+    return undefined;
+  }
+  if (typeof value.$ref === "string") {
+    if (seen.has(name)) {
+      return undefined;
+    }
+    const target = resolveLocalRef(root, value.$ref);
+    if (!target) {
+      return undefined;
+    }
+    const nextSeen = new Set(seen);
+    nextSeen.add(name);
+    return parseSecurityScheme(target, root, nextSeen, value.$ref);
+  }
+  const type = value.type;
+  if (type === "apiKey") {
+    const location = value.in;
+    const keyName = value.name;
+    if (
+      typeof keyName === "string" &&
+      (location === "header" || location === "query" || location === "cookie")
+    ) {
+      return { type: "apiKey", name: keyName, in: location };
+    }
+    return undefined;
+  }
+  if (type === "http") {
+    return { type: "http", scheme: typeof value.scheme === "string" ? value.scheme : "" };
+  }
+  if (type === "oauth2") {
+    return { type: "oauth2" };
+  }
+  if (type === "openIdConnect") {
+    return { type: "openIdConnect" };
+  }
+  return undefined;
+}
+
+function resolveSecurity(
+  operationSecurity: unknown,
+  pathItemSecurity: unknown,
+  globalSecurity: unknown,
+  schemes: Map<string, SecurityScheme>,
+): SecurityScheme[] {
+  const raw = Array.isArray(operationSecurity)
+    ? operationSecurity
+    : Array.isArray(pathItemSecurity)
+      ? pathItemSecurity
+      : Array.isArray(globalSecurity)
+        ? globalSecurity
+        : [];
+  const resolved: SecurityScheme[] = [];
+  for (const requirement of raw) {
+    if (!isObject(requirement)) {
+      continue;
+    }
+    for (const name of Object.keys(requirement)) {
+      const scheme = schemes.get(name);
+      if (scheme && !resolved.includes(scheme)) {
+        resolved.push(scheme);
+      }
+    }
+  }
+  return resolved;
+}
+
 function parseDocument(text: string, format?: "json" | "yaml"): OpenApiDocument {
   let document: unknown;
   if (format === "json") {
@@ -312,7 +457,7 @@ function parseDocument(text: string, format?: "json" | "yaml"): OpenApiDocument 
   if (!isObject(document)) {
     throw new SpecParseError("Spec root must be an object");
   }
-  return document;
+  return document as OpenApiDocument;
 }
 
 function assertOpenApiVersion(document: OpenApiDocument): void {

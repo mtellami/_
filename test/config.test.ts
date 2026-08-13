@@ -77,6 +77,34 @@ describe("loadConfig", () => {
     const config = loadConfig({}, "./cli.yaml");
     assert.equal(config.source, "./cli.yaml");
   });
+
+  it("parses auth credentials from the environment", () => {
+    const config = loadConfig({
+      OPENAPI_SOURCE: "./openapi.yaml",
+      API_API_KEY: "k-123",
+      API_AUTH_TOKEN: "t-456",
+      API_AUTH_USERNAME: "user",
+      API_AUTH_PASSWORD: "pass",
+      API_AUTH_HEADERS: '{"X-Proxy-Auth":"abc"}',
+    });
+    assert.equal(config.auth?.apiKey, "k-123");
+    assert.equal(config.auth?.bearerToken, "t-456");
+    assert.equal(config.auth?.username, "user");
+    assert.equal(config.auth?.password, "pass");
+    assert.deepEqual(config.auth?.headers, { "X-Proxy-Auth": "abc" });
+  });
+
+  it("leaves auth unset when no credentials are provided", () => {
+    const config = loadConfig({ OPENAPI_SOURCE: "./openapi.yaml" });
+    assert.equal(config.auth, undefined);
+  });
+
+  it("rejects malformed API_AUTH_HEADERS", () => {
+    assert.throws(
+      () => loadConfig({ OPENAPI_SOURCE: "./openapi.yaml", API_AUTH_HEADERS: "not json" }),
+      ConfigError,
+    );
+  });
 });
 
 describe("loader", () => {
@@ -90,6 +118,22 @@ describe("loader", () => {
       fetchImpl: async () => new Response('openapi: "3.0.3"', { status: 200 }),
     });
     assert.equal(spec.format, "yaml");
+  });
+
+  it("forwards configured headers when fetching a remote spec", async () => {
+    let captured: HeadersInit | undefined;
+    const spec = await loadSpec("http://example.com/spec.yaml", {
+      allowInsecureHttp: true,
+      headers: { authorization: "Bearer tok", "x-proxy-auth": "abc" },
+      fetchImpl: async (_url, init) => {
+        captured = init?.headers;
+        return new Response('openapi: "3.0.3"', { status: 200 });
+      },
+    });
+    assert.equal(spec.format, "yaml");
+    const headers = new Headers(captured);
+    assert.equal(headers.get("authorization"), "Bearer tok");
+    assert.equal(headers.get("x-proxy-auth"), "abc");
   });
 
   it("infers format from extension and content", () => {

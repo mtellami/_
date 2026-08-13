@@ -14,6 +14,8 @@ export interface LoadSpecOptions {
   fetchImpl?: typeof fetch;
   /** When false (default), refusing to fetch specs from plain `http://` URLs. */
   allowInsecureHttp?: boolean;
+  /** Extra headers sent when fetching a remote spec (e.g. configured credentials). */
+  headers?: Record<string, string>;
 }
 
 export function isHttpSource(source: string): boolean {
@@ -69,7 +71,10 @@ async function loadFromHttp(source: string, options: LoadSpecOptions): Promise<L
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
   try {
-    const response = await fetchImpl(source, { signal: controller.signal });
+    const response = await fetchImpl(source, {
+      signal: controller.signal,
+      headers: options.headers,
+    });
     if (!response.ok) {
       throw new SpecLoadError(
         `Failed to fetch spec from "${source}": HTTP ${response.status} ${response.statusText}`,

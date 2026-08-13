@@ -7,12 +7,23 @@ import { createMcpServer } from "./server/index.js";
 
 interface CliArgs {
   source?: string;
+  token?: string;
+  headers?: string;
+  apiKey?: string;
+  username?: string;
+  password?: string;
   help: boolean;
 }
 
 export function parseCliArgs(argv: string[]): CliArgs {
   let source: string | undefined;
+  let token: string | undefined;
+  let headers: string | undefined;
+  let apiKey: string | undefined;
+  let username: string | undefined;
+  let password: string | undefined;
   let help = false;
+
   for (let i = 0; i < argv.length; i += 1) {
     const arg = argv[i];
     if (arg === undefined) {
@@ -24,6 +35,36 @@ export function parseCliArgs(argv: string[]): CliArgs {
         source = next;
       }
       i += 1;
+    } else if (arg === "--token" || arg === "-t") {
+      const next = argv[i + 1];
+      if (next !== undefined) {
+        token = next;
+      }
+      i += 1;
+    } else if (arg === "--header" || arg === "-H") {
+      const next = argv[i + 1];
+      if (next !== undefined) {
+        headers = next;
+      }
+      i += 1;
+    } else if (arg === "--api-key") {
+      const next = argv[i + 1];
+      if (next !== undefined) {
+        apiKey = next;
+      }
+      i += 1;
+    } else if (arg === "--username") {
+      const next = argv[i + 1];
+      if (next !== undefined) {
+        username = next;
+      }
+      i += 1;
+    } else if (arg === "--password") {
+      const next = argv[i + 1];
+      if (next !== undefined) {
+        password = next;
+      }
+      i += 1;
     } else if (arg === "--help" || arg === "-h") {
       help = true;
     } else if (arg.startsWith("--")) {
@@ -32,7 +73,26 @@ export function parseCliArgs(argv: string[]): CliArgs {
       source = arg;
     }
   }
-  return { source, help };
+  const res: CliArgs = { help };
+  if (source !== undefined) {
+    res.source = source;
+  }
+  if (token !== undefined) {
+    res.token = token;
+  }
+  if (headers !== undefined) {
+    res.headers = headers;
+  }
+  if (apiKey !== undefined) {
+    res.apiKey = apiKey;
+  }
+  if (username !== undefined) {
+    res.username = username;
+  }
+  if (password !== undefined) {
+    res.password = password;
+  }
+  return res;
 }
 
 const USAGE = `openapi-mcp-bridge — Dynamic OpenAPI-to-MCP Bridge Engine
@@ -43,7 +103,12 @@ Usage:
 Options:
   -s, --spec <source>  Path to an OpenAPI spec file, or an http(s):// URL.
                        Overrides the OPENAPI_SOURCE environment variable.
-      --help, -h       Show this help message and exit.
+  -t, --token <token>  Bearer token for http/bearer, oauth2 and openIdConnect schemes.
+  -H, --header <json>  JSON object of extra headers injected into every request.
+      --api-key <key>  Key value for apiKey schemes (header, query or cookie).
+      --username <usr> Username for http/basic schemes.
+      --password <pwd> Password for http/basic schemes.
+  -h, --help           Show this help message and exit.
 
 Environment:
   OPENAPI_SOURCE       Spec file path or URL (required unless --spec is given).
@@ -57,6 +122,12 @@ Environment:
   SERVER_NAME          MCP server name (default: openapi-mcp-bridge).
   SERVER_VERSION       MCP server version (default: 0.1.0).
   ALLOW_INSECURE_HTTP  "true" to allow plain http:// targets (default: false).
+
+  API_AUTH_TOKEN       Bearer token for http/bearer, oauth2 and openIdConnect schemes.
+  API_API_KEY          Key value for apiKey schemes (header, query or cookie).
+  API_AUTH_USERNAME    Username for http/basic schemes.
+  API_AUTH_PASSWORD    Password for http/basic schemes.
+  API_AUTH_HEADERS     JSON object of extra headers injected into every request.
 `;
 
 export async function main(): Promise<void> {
@@ -66,9 +137,18 @@ export async function main(): Promise<void> {
     process.exit(0);
   }
 
+  const env = {
+    ...process.env,
+    ...(cli.token ? { API_AUTH_TOKEN: cli.token } : {}),
+    ...(cli.headers ? { API_AUTH_HEADERS: cli.headers } : {}),
+    ...(cli.apiKey ? { API_API_KEY: cli.apiKey } : {}),
+    ...(cli.username ? { API_AUTH_USERNAME: cli.username } : {}),
+    ...(cli.password ? { API_AUTH_PASSWORD: cli.password } : {}),
+  };
+
   let config: BridgeConfig;
   try {
-    config = loadConfig(process.env, cli.source);
+    config = loadConfig(env, cli.source);
   } catch (err) {
     process.stderr.write(`Error: ${err instanceof Error ? err.message : String(err)}\n`);
     process.stderr.write(USAGE);

@@ -13,6 +13,7 @@ Instead of hand-writing tool wrappers for each REST endpoint, point the bridge a
 - [CLI Usage](#cli-usage)
 - [MCP Client Configuration](#mcp-client-configuration)
 - [Configuration & Environment Variables](#configuration--environment-variables)
+- [Authentication](#authentication)
 - [Tool Mapping](#tool-mapping)
 - [Security & Limits](#security--limits)
 - [License](#license)
@@ -26,6 +27,7 @@ Instead of hand-writing tool wrappers for each REST endpoint, point the bridge a
 - **`$ref` resolution** — local component references (`#/components/schemas/...`) are dereferenced recursively, with cycle and depth guards.
 - **Input validation** — LLM-supplied arguments are validated against the generated JSON Schema with AJV (formats included) _before_ any network call; validation failures are returned as readable tool errors.
 - **Automatic HTTP execution** — path parameters are URL-encoded and substituted, query/header/cookie parameters are serialized, and request bodies are sent as JSON with the correct `Content-Type`.
+- **Built-in authentication** — `securitySchemes` are resolved and credentials configured via env vars are injected automatically, so protected endpoints work without the LLM knowing the secret.
 - **Base URL override** — point the bridge at a different environment (staging, a local mock, an authenticated proxy) without editing the spec.
 - **Response sanitization** — responses are compacted before reaching the LLM: depth, array length, string length, and total character budgets keep large payloads from blowing up the model's context window. A `[truncated]` marker is appended when content is cut.
 - **Built-in `health` tool** — a no-op bootstrap tool to verify the server is responding.
@@ -188,6 +190,11 @@ The server is configured once at startup through environment variables (and the 
 | `SERVER_NAME`                | `openapi-mcp-bridge` | MCP server name reported to the client.                                                            |
 | `SERVER_VERSION`             | `0.1.0`              | MCP server version reported to the client.                                                         |
 | `ALLOW_INSECURE_HTTP`        | `false`              | When `true`, permits `http://` spec sources and target APIs; otherwise those requests are refused. |
+| `API_AUTH_TOKEN`             | _(none)_             | Bearer token used for `http/bearer`, `oauth2` and `openIdConnect` security schemes.                |
+| `API_API_KEY`                | _(none)_             | Key value used for `apiKey` security schemes (header, query, or cookie).                           |
+| `API_AUTH_USERNAME`          | _(none)_             | Username used for `http/basic` security schemes.                                                   |
+| `API_AUTH_PASSWORD`          | _(none)_             | Password used for `http/basic` security schemes.                                                   |
+| `API_AUTH_HEADERS`           | _(none)_             | JSON object of extra headers injected into every request (e.g. proxy auth).                        |
 
 Example:
 
@@ -201,6 +208,27 @@ openapi-mcp-bridge
 ```
 
 > When `API_BASE_URL` is set, every tool call is routed to that base URL regardless of what the spec declares, which is handy for mocking, staging, or authenticated gateways.
+
+## Authentication
+
+Most real APIs are protected, so the bridge reads the spec's `security` / `components.securitySchemes` and injects the credentials you configure — the LLM never has to (and cannot) supply them per call.
+
+- **`http/bearer`, `oauth2`, `openIdConnect`** → set `API_AUTH_TOKEN`; the bridge sends `Authorization: Bearer <token>`.
+- **`http/basic`** → set `API_AUTH_USERNAME` / `API_AUTH_PASSWORD`; the bridge sends a `Basic` header.
+- **`apiKey`** → set `API_API_KEY`; the bridge places it in the location the scheme declares (`in: header`, `in: query`, or `in: cookie`).
+- **Anything else** → set `API_AUTH_HEADERS` to a JSON object (e.g. `{"X-Proxy-Auth":"abc"}`) that is injected into every request, which also covers authenticated gateways/proxies.
+
+Credentials are applied **only** to operations that declare the matching scheme; public operations (`security: []`) get none of them, though `API_AUTH_HEADERS` is always injected. Static tokens only — if your API needs a fresh token per call (client-credentials exchange, short-lived JWTs), point `API_BASE_URL` at a proxy that acquires tokens, or use `API_AUTH_HEADERS` with an already-fresh header.
+
+Example:
+
+```bash
+export OPENAPI_SOURCE=https://api.example.com/openapi.json
+export API_AUTH_TOKEN=eyJhbGciOi...
+openapi-mcp-bridge
+```
+
+> When the _spec file itself_ is served from a protected URL, the bridge reuses the configured credentials: `API_AUTH_TOKEN` is sent as a bearer token and `API_AUTH_HEADERS` are attached (explicit headers win) when fetching `OPENAPI_SOURCE` over HTTP(S).
 
 ## Tool Mapping
 
@@ -220,6 +248,7 @@ Input:    { petId: string (required), order?: string }
 
 - Spec loading supports both local files and remote URLs; remote fetches honor `API_TIMEOUT_MS`, and `http://` sources are refused unless `ALLOW_INSECURE_HTTP=true`.
 - Requests to the target API are made with the built-in `fetch` and a timeout; slow or failing upstreams surface as structured tool errors. Plain `http://` targets are refused unless `ALLOW_INSECURE_HTTP=true`.
+- Credentials are read from environment variables and injected server-side — they are never sent back to the model as tool arguments, and logs do not include request headers.
 - Responses are bounded (depths, array/string lengths, total chars) so models are not flooded with huge payloads — and truncation is always flagged.
 - Argument validation happens before any external call, rejecting malformed input early.
 - To talk to `http://` endpoints (e.g., local mocks), set `ALLOW_INSECURE_HTTP=true`.
