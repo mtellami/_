@@ -72,7 +72,7 @@ Environment:
   SANITIZE_MAX_STRING_LENGTH Max string length kept (default: unlimited).
   LOG_LEVEL              debug | info | warn | error (default: info).
   SERVER_NAME            MCP server name (default: api-mcp-bridge).
-  SERVER_VERSION         MCP server version (default: 0.1.0).
+  SERVER_VERSION         MCP server version (default: 1.0.0).
   ALLOW_INSECURE_HTTP    "true" to allow plain http:// targets (default: false).
   API_HEADERS            JSON object of extra headers injected into every request.
 `;

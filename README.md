@@ -27,7 +27,7 @@ Instead of hand-writing tool wrappers for each REST endpoint, point the bridge a
 - **`$ref` resolution** — local component references (`#/components/schemas/...`) are dereferenced recursively, with cycle and depth guards.
 - **Input validation** — LLM-supplied arguments are validated against the generated JSON Schema with AJV (formats included) _before_ any network call; validation failures are returned as readable tool errors.
 - **Automatic HTTP execution** — path parameters are URL-encoded and substituted, query/header/cookie parameters are serialized, and request bodies are sent as JSON with the correct `Content-Type`.
-- **Built-in authentication** — `securitySchemes` are resolved and credentials configured via env vars are injected automatically, so protected endpoints work without the LLM knowing the secret.
+- **Header-based authentication** — inject credentials as raw headers via `API_AUTH_HEADERS`/`API_HEADERS` (or the `-H` flag), so protected endpoints and authenticated proxies work without the LLM ever seeing the secret.
 - **Base URL override** — point the bridge at a different environment (staging, a local mock, an authenticated proxy) without editing the spec.
 - **Response sanitization** — responses are compacted before reaching the LLM: depth, array length, string length, and total character budgets keep large payloads from blowing up the model's context window. A `[truncated]` marker is appended when content is cut.
 - **Built-in `health` tool** — a no-op bootstrap tool to verify the server is responding.
@@ -102,11 +102,12 @@ npm run start -- --spec ./openapi.yaml
 api-mcp-bridge [options] [source]
 ```
 
-| Argument             | Description                                   |
-| -------------------- | --------------------------------------------- |
-| `-s, --spec <src>`   | Path to the spec file or an `http(s)://` URL. |
-| `<src>` (positional) | Same as `--spec`.                             |
-| `--help`             | Show usage.                                   |
+| Argument               | Description                                                                                 |
+| ---------------------- | ------------------------------------------------------------------------------------------- |
+| `-s, --spec <src>`     | Path to the spec file or an `http(s)://` URL.                                               |
+| `-H, --headers <json>` | JSON object of headers injected into every request (e.g. `{"Authorization":"Bearer ..."}`). |
+| `<src>` (positional)   | Same as `--spec`.                                                                           |
+| `--help`               | Show usage.                                                                                 |
 
 The spec source can also be provided via the `OPENAPI_SOURCE` environment variable. The CLI flag (or positional argument) takes precedence.
 
@@ -180,6 +181,7 @@ The server is configured once at startup through environment variables (and the 
 | Variable                     | Default          | Description                                                                                        |
 | ---------------------------- | ---------------- | -------------------------------------------------------------------------------------------------- |
 | `OPENAPI_SOURCE`             | _(required)_     | Spec path or `http(s)://` URL to load at startup.                                                  |
+| `OPENAPI_MAX_TOOLS`          | `100`            | Maximum number of MCP tools generated from the spec.                                               |
 | `API_BASE_URL`               | from spec        | Overrides the `servers[0].url` of the spec for every request.                                      |
 | `API_TIMEOUT_MS`             | `30000`          | Per-request timeout for calls to the target API.                                                   |
 | `API_MAX_RESPONSE_CHARS`     | unlimited        | Total character budget for sanitized responses returned to the model.                              |
@@ -188,13 +190,10 @@ The server is configured once at startup through environment variables (and the 
 | `SANITIZE_MAX_STRING_LENGTH` | unlimited        | Max length of an individual string value.                                                          |
 | `LOG_LEVEL`                  | `info`           | `debug`, `info`, `warn`, or `error`.                                                               |
 | `SERVER_NAME`                | `api-mcp-bridge` | MCP server name reported to the client.                                                            |
-| `SERVER_VERSION`             | `0.1.0`          | MCP server version reported to the client.                                                         |
+| `SERVER_VERSION`             | `1.0.0`          | MCP server version reported to the client.                                                         |
 | `ALLOW_INSECURE_HTTP`        | `false`          | When `true`, permits `http://` spec sources and target APIs; otherwise those requests are refused. |
-| `API_AUTH_TOKEN`             | _(none)_         | Bearer token used for `http/bearer`, `oauth2` and `openIdConnect` security schemes.                |
-| `API_API_KEY`                | _(none)_         | Key value used for `apiKey` security schemes (header, query, or cookie).                           |
-| `API_AUTH_USERNAME`          | _(none)_         | Username used for `http/basic` security schemes.                                                   |
-| `API_AUTH_PASSWORD`          | _(none)_         | Password used for `http/basic` security schemes.                                                   |
-| `API_AUTH_HEADERS`           | _(none)_         | JSON object of extra headers injected into every request (e.g. proxy auth).                        |
+| `API_AUTH_HEADERS`           | _(none)_         | JSON object of headers injected into every request (e.g. `{"Authorization":"Bearer ..."}`).        |
+| `API_HEADERS`                | _(none)_         | Same as `API_AUTH_HEADERS`; takes precedence when both are set.                                    |
 
 Example:
 
@@ -211,24 +210,27 @@ api-mcp-bridge
 
 ## Authentication
 
-Most real APIs are protected, so the bridge reads the spec's `security` / `components.securitySchemes` and injects the credentials you configure — the LLM never has to (and cannot) supply them per call.
+Most real APIs are protected. The bridge injects credentials as raw HTTP headers on every request — the LLM never has to (and cannot) supply them per call. Configure them with `API_AUTH_HEADERS` (env), `API_HEADERS` (env, takes precedence), or the `-H/--headers` CLI flag (takes precedence over both).
 
-- **`http/bearer`, `oauth2`, `openIdConnect`** → set `API_AUTH_TOKEN`; the bridge sends `Authorization: Bearer <token>`.
-- **`http/basic`** → set `API_AUTH_USERNAME` / `API_AUTH_PASSWORD`; the bridge sends a `Basic` header.
-- **`apiKey`** → set `API_API_KEY`; the bridge places it in the location the scheme declares (`in: header`, `in: query`, or `in: cookie`).
-- **Anything else** → set `API_AUTH_HEADERS` to a JSON object (e.g. `{"X-Proxy-Auth":"abc"}`) that is injected into every request, which also covers authenticated gateways/proxies.
-
-Credentials are applied **only** to operations that declare the matching scheme; public operations (`security: []`) get none of them, though `API_AUTH_HEADERS` is always injected. Static tokens only — if your API needs a fresh token per call (client-credentials exchange, short-lived JWTs), point `API_BASE_URL` at a proxy that acquires tokens, or use `API_AUTH_HEADERS` with an already-fresh header.
-
-Example:
+The value is a JSON object of header name/value pairs:
 
 ```bash
 export OPENAPI_SOURCE=https://api.example.com/openapi.json
-export API_AUTH_TOKEN=eyJhbGciOi...
+export API_AUTH_HEADERS='{"Authorization":"Bearer eyJhbGciOi...","X-API-Key":"abc123"}'
 api-mcp-bridge
 ```
 
-> When the _spec file itself_ is served from a protected URL, the bridge reuses the configured credentials: `API_AUTH_TOKEN` is sent as a bearer token and `API_AUTH_HEADERS` are attached (explicit headers win) when fetching `OPENAPI_SOURCE` over HTTP(S).
+Or via the CLI flag:
+
+```bash
+api-mcp-bridge --spec ./openapi.yaml -H '{"Authorization":"Bearer eyJhbGciOi..."}'
+```
+
+This covers any scheme your upstream uses — `http/bearer`, `oauth2`, `openIdConnect` (`Authorization: Bearer …`), `http/basic` (`Authorization: Basic base64(user:pass)`), `apiKey` headers (`X-API-Key` or whatever header/query/cookie the spec declares), and custom proxy/auth gateway headers.
+
+Static tokens only — if your API needs a fresh token per call (client-credentials exchange, short-lived JWTs), point `API_BASE_URL` at a proxy that acquires tokens, or rotate the header value before restarting the bridge.
+
+> When the _spec file itself_ is served from a protected URL, the same headers are attached when fetching `OPENAPI_SOURCE` over HTTP(S).
 
 ## Tool Mapping
 

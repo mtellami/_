@@ -28,7 +28,7 @@ export const DEFAULT_CONFIG = {
   timeoutMs: 30_000,
   maxTools: 100,
   serverName: "api-mcp-bridge",
-  serverVersion: "0.1.0",
+  serverVersion: "1.0.0",
 } as const;
 
 const numberOrEmpty = (def: number) =>

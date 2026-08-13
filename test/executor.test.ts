@@ -22,7 +22,7 @@ function makeContext(
     maxStringLength: 2_000,
     logLevel: "info",
     serverName: "api-mcp-bridge",
-    serverVersion: "0.1.0",
+    serverVersion: "1.0.0",
     allowInsecureHttp: false,
     ...overrides,
   };

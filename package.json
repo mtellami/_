@@ -1,9 +1,30 @@
 {
   "name": "api-mcp-bridge",
-  "version": "0.1.0",
+  "version": "1.0.0",
   "description": "Dynamic OpenAPI-to-MCP Bridge Engine — an MCP server that ingests OpenAPI 3.x specs and exposes validated tools to LLMs.",
-  "type": "module",
+  "author": "Moad Tellami",
   "license": "MIT",
+  "keywords": [
+    "mcp",
+    "model-context-protocol",
+    "openapi",
+    "openapi3",
+    "swagger",
+    "llm",
+    "ai",
+    "bridge",
+    "api",
+    "tools"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/mtellami/api-mcp-bridge.git"
+  },
+  "homepage": "https://github.com/mtellami/api-mcp-bridge#readme",
+  "bugs": {
+    "url": "https://github.com/mtellami/api-mcp-bridge/issues"
+  },
+  "type": "module",
   "engines": {
     "node": ">=20.19"
   },
