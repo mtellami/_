@@ -1,4 +1,6 @@
 #!/usr/bin/env node
+import { realpathSync } from "node:fs";
+import { pathToFileURL } from "node:url";
 import { serveStdio } from "@modelcontextprotocol/server/stdio";
 import { loadConfig, type BridgeConfig } from "./config.js";
 import { Logger } from "./logger.js";
@@ -117,6 +119,7 @@ export async function main(): Promise<void> {
   process.on("SIGTERM", () => shutdown("SIGTERM"));
 }
 
-if (import.meta.url === `file://${process.argv[1]}`) {
+const entry = process.argv[1];
+if (entry && import.meta.url === pathToFileURL(realpathSync(entry)).href) {
   void main();
 }
