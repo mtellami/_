@@ -2,19 +2,6 @@ import { z } from "zod";
 import { ConfigError } from "./errors.js";
 import { parseLogLevel, type LogLevel } from "./logger.js";
 
-export interface AuthConfig {
-  /** Raw headers injected into every request (e.g. proxy auth). */
-  headers?: Record<string, string>;
-  /** Value used for `apiKey` security schemes. */
-  apiKey?: string;
-  /** Value used for `http/bearer`, `oauth2` and `openIdConnect` schemes. */
-  bearerToken?: string;
-  /** Username used for `http/basic` schemes. */
-  username?: string;
-  /** Password used for `http/basic` schemes. */
-  password?: string;
-}
-
 export interface BridgeConfig {
   /** Raw spec source: a filesystem path or an http(s) URL. */
   source: string;
@@ -33,14 +20,14 @@ export interface BridgeConfig {
   serverName: string;
   serverVersion: string;
   allowInsecureHttp: boolean;
-  /** Credentials the bridge injects into protected operations. */
-  auth?: AuthConfig;
+  /** Raw headers injected into every request. */
+  headers?: Record<string, string>;
 }
 
 export const DEFAULT_CONFIG = {
   timeoutMs: 30_000,
   maxTools: 100,
-  serverName: "openapi-mcp-bridge",
+  serverName: "api-mcp-bridge",
   serverVersion: "0.1.0",
 } as const;
 
@@ -84,15 +71,12 @@ const EnvSchema = z.object({
     .default("false")
     .transform((value) => value === "true" || value === "1"),
   API_AUTH_HEADERS: z.string().optional(),
-  API_API_KEY: z.string().min(1).optional(),
-  API_AUTH_TOKEN: z.string().min(1).optional(),
-  API_AUTH_USERNAME: z.string().min(1).optional(),
-  API_AUTH_PASSWORD: z.string().min(1).optional(),
+  API_HEADERS: z.string().optional(),
 });
 
 type RawEnv = Record<string, string | undefined>;
 
-export function loadConfig(env: RawEnv, cliSource?: string): BridgeConfig {
+export function loadConfig(env: RawEnv, cliSource?: string, cliHeaders?: string): BridgeConfig {
   const result = EnvSchema.safeParse(env);
   if (!result.success) {
     const first = result.error.issues[0];
@@ -108,6 +92,7 @@ export function loadConfig(env: RawEnv, cliSource?: string): BridgeConfig {
   if (!source) {
     throw new ConfigError("No spec source provided: use the --spec flag or set OPENAPI_SOURCE");
   }
+  const headersRaw = cliHeaders ?? parsed.API_HEADERS ?? parsed.API_AUTH_HEADERS;
   return {
     source,
     baseUrlOverride: parsed.API_BASE_URL,
@@ -121,55 +106,19 @@ export function loadConfig(env: RawEnv, cliSource?: string): BridgeConfig {
     serverName: parsed.SERVER_NAME,
     serverVersion: parsed.SERVER_VERSION,
     allowInsecureHttp: parsed.ALLOW_INSECURE_HTTP,
-    auth: buildAuthConfig({
-      headersRaw: parsed.API_AUTH_HEADERS,
-      apiKey: parsed.API_API_KEY,
-      bearerToken: parsed.API_AUTH_TOKEN,
-      username: parsed.API_AUTH_USERNAME,
-      password: parsed.API_AUTH_PASSWORD,
-    }),
+    headers: headersRaw !== undefined ? parseHeaders(headersRaw) : undefined,
   };
 }
 
-function buildAuthConfig(input: {
-  headersRaw?: string;
-  apiKey?: string;
-  bearerToken?: string;
-  username?: string;
-  password?: string;
-}): AuthConfig | undefined {
-  const auth: AuthConfig = {};
-  if (input.headersRaw !== undefined) {
-    auth.headers = parseAuthHeaders(input.headersRaw);
-  }
-  if (input.apiKey !== undefined) {
-    auth.apiKey = input.apiKey;
-  }
-  if (input.bearerToken !== undefined) {
-    auth.bearerToken = input.bearerToken;
-  }
-  if (input.username !== undefined) {
-    auth.username = input.username;
-  }
-  if (input.password !== undefined) {
-    auth.password = input.password;
-  }
-  return Object.keys(auth).length > 0 ? auth : undefined;
-}
-
-function parseAuthHeaders(raw: string): Record<string, string> {
+function parseHeaders(raw: string): Record<string, string> {
   let parsed: unknown;
   try {
     parsed = JSON.parse(raw);
   } catch {
-    throw new ConfigError(
-      "Invalid API_AUTH_HEADERS: expected a JSON object of header name/value pairs",
-    );
+    throw new ConfigError("Invalid API_HEADERS: expected a JSON object of header name/value pairs");
   }
   if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) {
-    throw new ConfigError(
-      "Invalid API_AUTH_HEADERS: expected a JSON object of header name/value pairs",
-    );
+    throw new ConfigError("Invalid API_HEADERS: expected a JSON object of header name/value pairs");
   }
   const headers: Record<string, string> = {};
   for (const [key, value] of Object.entries(parsed)) {

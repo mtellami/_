@@ -1,7 +1,6 @@
 import { HttpExecutionError } from "../errors.js";
 import type { HttpResult, ParsedOperation, RuntimeContext } from "../types.js";
 import { prepareRequest } from "./request.js";
-import { applyAuth } from "./auth.js";
 
 export async function executeOperation(
   runtime: RuntimeContext,
@@ -15,7 +14,11 @@ export async function executeOperation(
   }
 
   const request = prepareRequest(operation, args, baseUrl, config.timeoutMs);
-  applyAuth(request, operation, config.auth);
+  if (config.headers) {
+    for (const [name, value] of Object.entries(config.headers)) {
+      request.headers[name.toLowerCase()] = value;
+    }
+  }
 
   if (!config.allowInsecureHttp && new URL(request.url).protocol === "http:") {
     throw new HttpExecutionError(

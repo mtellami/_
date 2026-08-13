@@ -15,12 +15,13 @@ function makeContext(
   const config: BridgeConfig = {
     source: "./openapi.yaml",
     timeoutMs: 5_000,
+    maxTools: 100,
     maxResponseChars: 200_000,
     maxDepth: 8,
     maxArrayLength: 100,
     maxStringLength: 2_000,
     logLevel: "info",
-    serverName: "openapi-mcp-bridge",
+    serverName: "api-mcp-bridge",
     serverVersion: "0.1.0",
     allowInsecureHttp: false,
     ...overrides,
@@ -113,85 +114,17 @@ describe("executeOperation", () => {
     );
   });
 
-  it("injects a bearer token for http/bearer operations", async () => {
-    const headers: Record<string, string> = {};
-    const runtime = makeContext({ auth: { bearerToken: "tok-1" } }, async (_url, init) => {
-      Object.assign(headers, init?.headers);
-      return new Response("ok", { status: 200 });
-    });
-    const protectedOp: ParsedOperation = {
-      ...operation,
-      security: [{ type: "http", scheme: "bearer" }],
-    };
-    await executeOperation(runtime, protectedOp, { petId: "p1" });
-    assert.equal(headers.authorization, "Bearer tok-1");
-  });
-
-  it("does not send credentials to public operations", async () => {
-    const headers: Record<string, string> = {};
-    const runtime = makeContext({ auth: { bearerToken: "tok-1" } }, async (_url, init) => {
-      Object.assign(headers, init?.headers);
-      return new Response("ok", { status: 200 });
-    });
-    await executeOperation(runtime, operation, { petId: "p1" });
-    assert.equal(headers.authorization, undefined);
-  });
-
-  it("injects an apiKey header from the apiKey security scheme", async () => {
-    const headers: Record<string, string> = {};
-    const runtime = makeContext({ auth: { apiKey: "k-9" } }, async (_url, init) => {
-      Object.assign(headers, init?.headers);
-      return new Response("ok", { status: 200 });
-    });
-    const protectedOp: ParsedOperation = {
-      ...operation,
-      security: [{ type: "apiKey", name: "X-API-Key", in: "header" }],
-    };
-    await executeOperation(runtime, protectedOp, { petId: "p1" });
-    assert.equal(headers["x-api-key"], "k-9");
-  });
-
-  it("appends an apiKey query parameter when the scheme is in query", async () => {
-    const urls: string[] = [];
-    const runtime = makeContext({ auth: { apiKey: "k-9" } }, async (url) => {
-      urls.push(String(url));
-      return new Response("ok", { status: 200 });
-    });
-    const protectedOp: ParsedOperation = {
-      ...operation,
-      security: [{ type: "apiKey", name: "api_key", in: "query" }],
-    };
-    await executeOperation(runtime, protectedOp, { petId: "p1" });
-    assert.equal(urls[0], "https://api.example.com/pets/p1?api_key=k-9");
-  });
-
-  it("sends basic auth from username and password", async () => {
+  it("applies configured headers to every request", async () => {
     const headers: Record<string, string> = {};
     const runtime = makeContext(
-      { auth: { username: "alice", password: "s3cret" } },
-      async (_url, init) => {
-        Object.assign(headers, init?.headers);
-        return new Response("ok", { status: 200 });
-      },
-    );
-    const protectedOp: ParsedOperation = {
-      ...operation,
-      security: [{ type: "http", scheme: "basic" }],
-    };
-    await executeOperation(runtime, protectedOp, { petId: "p1" });
-    assert.equal(headers.authorization, `Basic ${Buffer.from("alice:s3cret").toString("base64")}`);
-  });
-
-  it("applies raw auth headers to every request", async () => {
-    const headers: Record<string, string> = {};
-    const runtime = makeContext(
-      { auth: { headers: { "X-Proxy-Auth": "abc" } } },
+      { headers: { Authorization: "Bearer tok-123", "X-Custom": "abc" } },
       async (_url, init) => {
         Object.assign(headers, init?.headers);
         return new Response("ok", { status: 200 });
       },
     );
     await executeOperation(runtime, operation, { petId: "p1" });
-    assert.equal(headers["x-proxy-auth"], "abc");
+    assert.equal(headers.authorization, "Bearer tok-123");
+    assert.equal(headers["x-custom"], "abc");
   });
 });

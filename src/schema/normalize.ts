@@ -43,6 +43,14 @@ export function normalizeOpenApiSchema(schema: JsonSchema): JsonSchema {
   }
   delete copy.nullable;
 
+  if (
+    Array.isArray(copy.type) &&
+    copy.type.includes("object") &&
+    (copy.properties || copy.required)
+  ) {
+    copy.type = "object";
+  }
+
   if (copy.exclusiveMinimum === true && typeof copy.minimum === "number") {
     copy.exclusiveMinimum = copy.minimum;
     delete copy.minimum;

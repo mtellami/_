@@ -15,7 +15,6 @@ export async function buildContext(
     timeoutMs: config.timeoutMs,
     fetchImpl,
     allowInsecureHttp: config.allowInsecureHttp,
-    headers: specFetchHeaders(config),
   });
   logger.debug(`Parsing ${loaded.format} spec (${loaded.text.length} characters)`);
   const specOrigin = isHttpSource(config.source) ? safeOrigin(config.source) : undefined;
@@ -28,23 +27,6 @@ export async function buildContext(
   };
 
   return { runtime, parsedSpec };
-}
-
-function specFetchHeaders(config: BridgeConfig): Record<string, string> | undefined {
-  const auth = config.auth;
-  if (!auth) {
-    return undefined;
-  }
-  const headers: Record<string, string> = {};
-  if (auth.bearerToken) {
-    headers.authorization = `Bearer ${auth.bearerToken}`;
-  }
-  if (auth.headers) {
-    for (const [name, value] of Object.entries(auth.headers)) {
-      headers[name.toLowerCase()] = value;
-    }
-  }
-  return Object.keys(headers).length > 0 ? headers : undefined;
 }
 
 function safeOrigin(source: string): string | undefined {

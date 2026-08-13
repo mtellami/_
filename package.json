@@ -1,5 +1,5 @@
 {
-  "name": "openapi-mcp-bridge",
+  "name": "api-mcp-bridge",
   "version": "0.1.0",
   "description": "Dynamic OpenAPI-to-MCP Bridge Engine — an MCP server that ingests OpenAPI 3.x specs and exposes validated tools to LLMs.",
   "type": "module",
@@ -17,7 +17,7 @@
     "./package.json": "./package.json"
   },
   "bin": {
-    "openapi-mcp-bridge": "dist/index.js"
+    "api-mcp-bridge": "dist/index.js"
   },
   "files": [
     "dist"

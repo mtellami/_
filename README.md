@@ -1,4 +1,4 @@
-# openapi-mcp-bridge
+# api-mcp-bridge
 
 > A Model Context Protocol (MCP) server that ingests any OpenAPI 3.0/3.1 specification (YAML or JSON) at runtime and dynamically exposes every endpoint as a fully validated MCP tool for LLMs.
 
@@ -79,13 +79,13 @@ The package is published to npm and ships a `dist` build with a CLI binary.
 ### Global install
 
 ```bash
-npm install -g openapi-mcp-bridge
+npm install -g api-mcp-bridge
 ```
 
 ### Run-on-demand with npx
 
 ```bash
-npx openapi-mcp-bridge --spec ./openapi.yaml
+npx api-mcp-bridge --spec ./openapi.yaml
 ```
 
 ### From source
@@ -99,7 +99,7 @@ npm run start -- --spec ./openapi.yaml
 ## CLI Usage
 
 ```
-openapi-mcp-bridge [options] [source]
+api-mcp-bridge [options] [source]
 ```
 
 | Argument             | Description                                   |
@@ -112,18 +112,18 @@ The spec source can also be provided via the `OPENAPI_SOURCE` environment variab
 
 ```bash
 # Local file spec
-openapi-mcp-bridge --spec ./openapi.yaml
+api-mcp-bridge --spec ./openapi.yaml
 
 # Remote spec URL
-openapi-mcp-bridge --spec https://api.example.com/openapi.json
+api-mcp-bridge --spec https://api.example.com/openapi.json
 
 # Env-driven
-OPENAPI_SOURCE=./openapi.yaml openapi-mcp-bridge
+OPENAPI_SOURCE=./openapi.yaml api-mcp-bridge
 ```
 
 ## MCP Client Configuration
 
-`openapi-mcp-bridge` is a **stdio** MCP server, so it plugs into MCP-compatible clients (Claude Desktop, Cursor, VS Code Copilot, homegrown agents, etc.) as a stdio subprocess.
+`api-mcp-bridge` is a **stdio** MCP server, so it plugs into MCP-compatible clients (Claude Desktop, Cursor, VS Code Copilot, homegrown agents, etc.) as a stdio subprocess.
 
 ### Claude Desktop
 
@@ -133,7 +133,7 @@ Open `claude_desktop_config.json` (macOS: `~/Library/Application Support/Claude/
 {
   "mcpServers": {
     "openapi-bridge": {
-      "command": "openapi-mcp-bridge",
+      "command": "api-mcp-bridge",
       "args": ["--spec", "/absolute/path/to/openapi.yaml"],
       "env": {
         "API_BASE_URL": "https://api.example.com"
@@ -149,7 +149,7 @@ Open `claude_desktop_config.json` (macOS: `~/Library/Application Support/Claude/
 {
   "mcpServers": {
     "openapi-bridge": {
-      "command": "openapi-mcp-bridge",
+      "command": "api-mcp-bridge",
       "args": ["--spec", "https://api.example.com/openapi.json"]
     }
   }
@@ -165,7 +165,7 @@ Use plain `node`:
   "mcpServers": {
     "openapi-bridge": {
       "command": "node",
-      "args": ["/path/to/openapi-mcp-bridge/dist/index.js", "--spec", "./openapi.yaml"]
+      "args": ["/path/to/api-mcp-bridge/dist/index.js", "--spec", "./openapi.yaml"]
     }
   }
 }
@@ -177,24 +177,24 @@ Use plain `node`:
 
 The server is configured once at startup through environment variables (and the CLI `source` argument).
 
-| Variable                     | Default              | Description                                                                                        |
-| ---------------------------- | -------------------- | -------------------------------------------------------------------------------------------------- |
-| `OPENAPI_SOURCE`             | _(required)_         | Spec path or `http(s)://` URL to load at startup.                                                  |
-| `API_BASE_URL`               | from spec            | Overrides the `servers[0].url` of the spec for every request.                                      |
-| `API_TIMEOUT_MS`             | `30000`              | Per-request timeout for calls to the target API.                                                   |
-| `API_MAX_RESPONSE_CHARS`     | unlimited            | Total character budget for sanitized responses returned to the model.                              |
-| `SANITIZE_MAX_DEPTH`         | unlimited            | Max nesting depth kept when compacting JSON responses.                                             |
-| `SANITIZE_MAX_ARRAY_LENGTH`  | unlimited            | Max number of array elements kept per array.                                                       |
-| `SANITIZE_MAX_STRING_LENGTH` | unlimited            | Max length of an individual string value.                                                          |
-| `LOG_LEVEL`                  | `info`               | `debug`, `info`, `warn`, or `error`.                                                               |
-| `SERVER_NAME`                | `openapi-mcp-bridge` | MCP server name reported to the client.                                                            |
-| `SERVER_VERSION`             | `0.1.0`              | MCP server version reported to the client.                                                         |
-| `ALLOW_INSECURE_HTTP`        | `false`              | When `true`, permits `http://` spec sources and target APIs; otherwise those requests are refused. |
-| `API_AUTH_TOKEN`             | _(none)_             | Bearer token used for `http/bearer`, `oauth2` and `openIdConnect` security schemes.                |
-| `API_API_KEY`                | _(none)_             | Key value used for `apiKey` security schemes (header, query, or cookie).                           |
-| `API_AUTH_USERNAME`          | _(none)_             | Username used for `http/basic` security schemes.                                                   |
-| `API_AUTH_PASSWORD`          | _(none)_             | Password used for `http/basic` security schemes.                                                   |
-| `API_AUTH_HEADERS`           | _(none)_             | JSON object of extra headers injected into every request (e.g. proxy auth).                        |
+| Variable                     | Default          | Description                                                                                        |
+| ---------------------------- | ---------------- | -------------------------------------------------------------------------------------------------- |
+| `OPENAPI_SOURCE`             | _(required)_     | Spec path or `http(s)://` URL to load at startup.                                                  |
+| `API_BASE_URL`               | from spec        | Overrides the `servers[0].url` of the spec for every request.                                      |
+| `API_TIMEOUT_MS`             | `30000`          | Per-request timeout for calls to the target API.                                                   |
+| `API_MAX_RESPONSE_CHARS`     | unlimited        | Total character budget for sanitized responses returned to the model.                              |
+| `SANITIZE_MAX_DEPTH`         | unlimited        | Max nesting depth kept when compacting JSON responses.                                             |
+| `SANITIZE_MAX_ARRAY_LENGTH`  | unlimited        | Max number of array elements kept per array.                                                       |
+| `SANITIZE_MAX_STRING_LENGTH` | unlimited        | Max length of an individual string value.                                                          |
+| `LOG_LEVEL`                  | `info`           | `debug`, `info`, `warn`, or `error`.                                                               |
+| `SERVER_NAME`                | `api-mcp-bridge` | MCP server name reported to the client.                                                            |
+| `SERVER_VERSION`             | `0.1.0`          | MCP server version reported to the client.                                                         |
+| `ALLOW_INSECURE_HTTP`        | `false`          | When `true`, permits `http://` spec sources and target APIs; otherwise those requests are refused. |
+| `API_AUTH_TOKEN`             | _(none)_         | Bearer token used for `http/bearer`, `oauth2` and `openIdConnect` security schemes.                |
+| `API_API_KEY`                | _(none)_         | Key value used for `apiKey` security schemes (header, query, or cookie).                           |
+| `API_AUTH_USERNAME`          | _(none)_         | Username used for `http/basic` security schemes.                                                   |
+| `API_AUTH_PASSWORD`          | _(none)_         | Password used for `http/basic` security schemes.                                                   |
+| `API_AUTH_HEADERS`           | _(none)_         | JSON object of extra headers injected into every request (e.g. proxy auth).                        |
 
 Example:
 
@@ -204,7 +204,7 @@ export API_BASE_URL=https://localhost:8080
 export API_TIMEOUT_MS=15000
 export API_MAX_RESPONSE_CHARS=50000
 export LOG_LEVEL=debug
-openapi-mcp-bridge
+api-mcp-bridge
 ```
 
 > When `API_BASE_URL` is set, every tool call is routed to that base URL regardless of what the spec declares, which is handy for mocking, staging, or authenticated gateways.
@@ -225,7 +225,7 @@ Example:
 ```bash
 export OPENAPI_SOURCE=https://api.example.com/openapi.json
 export API_AUTH_TOKEN=eyJhbGciOi...
-openapi-mcp-bridge
+api-mcp-bridge
 ```
 
 > When the _spec file itself_ is served from a protected URL, the bridge reuses the configured credentials: `API_AUTH_TOKEN` is sent as a bearer token and `API_AUTH_HEADERS` are attached (explicit headers win) when fetching `OPENAPI_SOURCE` over HTTP(S).

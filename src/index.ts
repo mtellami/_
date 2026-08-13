@@ -7,21 +7,13 @@ import { createMcpServer } from "./server/index.js";
 
 interface CliArgs {
   source?: string;
-  token?: string;
   headers?: string;
-  apiKey?: string;
-  username?: string;
-  password?: string;
   help: boolean;
 }
 
 export function parseCliArgs(argv: string[]): CliArgs {
   let source: string | undefined;
-  let token: string | undefined;
   let headers: string | undefined;
-  let apiKey: string | undefined;
-  let username: string | undefined;
-  let password: string | undefined;
   let help = false;
 
   for (let i = 0; i < argv.length; i += 1) {
@@ -35,34 +27,10 @@ export function parseCliArgs(argv: string[]): CliArgs {
         source = next;
       }
       i += 1;
-    } else if (arg === "--token" || arg === "-t") {
-      const next = argv[i + 1];
-      if (next !== undefined) {
-        token = next;
-      }
-      i += 1;
-    } else if (arg === "--header" || arg === "-H") {
+    } else if (arg === "--headers" || arg === "--header" || arg === "-H") {
       const next = argv[i + 1];
       if (next !== undefined) {
         headers = next;
-      }
-      i += 1;
-    } else if (arg === "--api-key") {
-      const next = argv[i + 1];
-      if (next !== undefined) {
-        apiKey = next;
-      }
-      i += 1;
-    } else if (arg === "--username") {
-      const next = argv[i + 1];
-      if (next !== undefined) {
-        username = next;
-      }
-      i += 1;
-    } else if (arg === "--password") {
-      const next = argv[i + 1];
-      if (next !== undefined) {
-        password = next;
       }
       i += 1;
     } else if (arg === "--help" || arg === "-h") {
@@ -77,57 +45,36 @@ export function parseCliArgs(argv: string[]): CliArgs {
   if (source !== undefined) {
     res.source = source;
   }
-  if (token !== undefined) {
-    res.token = token;
-  }
   if (headers !== undefined) {
     res.headers = headers;
-  }
-  if (apiKey !== undefined) {
-    res.apiKey = apiKey;
-  }
-  if (username !== undefined) {
-    res.username = username;
-  }
-  if (password !== undefined) {
-    res.password = password;
   }
   return res;
 }
 
-const USAGE = `openapi-mcp-bridge — Dynamic OpenAPI-to-MCP Bridge Engine
+const USAGE = `api-mcp-bridge — Dynamic OpenAPI-to-MCP Bridge Engine
 
 Usage:
-  openapi-mcp-bridge [options] [source]
+  api-mcp-bridge [options] [source]
 
 Options:
-  -s, --spec <source>  Path to an OpenAPI spec file, or an http(s):// URL.
-                       Overrides the OPENAPI_SOURCE environment variable.
-  -t, --token <token>  Bearer token for http/bearer, oauth2 and openIdConnect schemes.
-  -H, --header <json>  JSON object of extra headers injected into every request.
-      --api-key <key>  Key value for apiKey schemes (header, query or cookie).
-      --username <usr> Username for http/basic schemes.
-      --password <pwd> Password for http/basic schemes.
-  -h, --help           Show this help message and exit.
+  -s, --spec <source>    Path to an OpenAPI spec file, or an http(s):// URL.
+                         Overrides the OPENAPI_SOURCE environment variable.
+  -H, --headers <json>   JSON object of extra headers injected into every request (e.g. {"Authorization": "Bearer ..."}).
+  -h, --help             Show this help message and exit.
 
 Environment:
-  OPENAPI_SOURCE       Spec file path or URL (required unless --spec is given).
-  API_BASE_URL         Override the base URL used for every request.
-  API_TIMEOUT_MS       Per-request timeout in ms (default: 30000).
-  API_MAX_RESPONSE_CHARS  Response character budget (default: unlimited).
-  SANITIZE_MAX_DEPTH   Max JSON depth kept (default: unlimited).
-  SANITIZE_MAX_ARRAY_LENGTH  Max array elements kept (default: unlimited).
+  OPENAPI_SOURCE         Spec file path or URL (required unless --spec is given).
+  API_BASE_URL           Override the base URL used for every request.
+  API_TIMEOUT_MS         Per-request timeout in ms (default: 30000).
+  API_MAX_RESPONSE_CHARS Response character budget (default: unlimited).
+  SANITIZE_MAX_DEPTH     Max JSON depth kept (default: unlimited).
+  SANITIZE_MAX_ARRAY_LENGTH Max array elements kept (default: unlimited).
   SANITIZE_MAX_STRING_LENGTH Max string length kept (default: unlimited).
-  LOG_LEVEL            debug | info | warn | error (default: info).
-  SERVER_NAME          MCP server name (default: openapi-mcp-bridge).
-  SERVER_VERSION       MCP server version (default: 0.1.0).
-  ALLOW_INSECURE_HTTP  "true" to allow plain http:// targets (default: false).
-
-  API_AUTH_TOKEN       Bearer token for http/bearer, oauth2 and openIdConnect schemes.
-  API_API_KEY          Key value for apiKey schemes (header, query or cookie).
-  API_AUTH_USERNAME    Username for http/basic schemes.
-  API_AUTH_PASSWORD    Password for http/basic schemes.
-  API_AUTH_HEADERS     JSON object of extra headers injected into every request.
+  LOG_LEVEL              debug | info | warn | error (default: info).
+  SERVER_NAME            MCP server name (default: api-mcp-bridge).
+  SERVER_VERSION         MCP server version (default: 0.1.0).
+  ALLOW_INSECURE_HTTP    "true" to allow plain http:// targets (default: false).
+  API_HEADERS            JSON object of extra headers injected into every request.
 `;
 
 export async function main(): Promise<void> {
@@ -139,11 +86,7 @@ export async function main(): Promise<void> {
 
   const env = {
     ...process.env,
-    ...(cli.token ? { API_AUTH_TOKEN: cli.token } : {}),
-    ...(cli.headers ? { API_AUTH_HEADERS: cli.headers } : {}),
-    ...(cli.apiKey ? { API_API_KEY: cli.apiKey } : {}),
-    ...(cli.username ? { API_AUTH_USERNAME: cli.username } : {}),
-    ...(cli.password ? { API_AUTH_PASSWORD: cli.password } : {}),
+    ...(cli.headers ? { API_HEADERS: cli.headers } : {}),
   };
 
   let config: BridgeConfig;

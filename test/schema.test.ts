@@ -89,14 +89,14 @@ describe("normalizeOpenApiSchema", () => {
     };
     const normalized = normalizeOpenApiSchema(input);
     assert.notEqual(normalized, input);
-    assert.deepEqual(normalized.type, ["object", "null"]);
-    assert.deepEqual(normalized.properties?.tags.type, ["array", "null"]);
+    assert.equal(normalized.type, "object");
+    assert.deepEqual(normalized.properties?.tags?.type, ["array", "null"]);
     assert.ok(
-      normalized.properties?.tags.items && !Array.isArray(normalized.properties.tags.items),
+      normalized.properties?.tags?.items && !Array.isArray(normalized.properties.tags.items),
     );
     assert.deepEqual(
       (
-        normalized.properties.tags.items as {
+        normalized.properties?.tags?.items as {
           type?: string | string[];
         }
       ).type,

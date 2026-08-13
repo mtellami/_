@@ -19,7 +19,7 @@ describe("loadConfig", () => {
     assert.equal(config.maxArrayLength, undefined);
     assert.equal(config.maxStringLength, undefined);
     assert.equal(config.logLevel, "info");
-    assert.equal(config.serverName, "openapi-mcp-bridge");
+    assert.equal(config.serverName, "api-mcp-bridge");
     assert.equal(config.allowInsecureHttp, false);
   });
 
@@ -78,30 +78,22 @@ describe("loadConfig", () => {
     assert.equal(config.source, "./cli.yaml");
   });
 
-  it("parses auth credentials from the environment", () => {
+  it("parses headers from the environment", () => {
     const config = loadConfig({
       OPENAPI_SOURCE: "./openapi.yaml",
-      API_API_KEY: "k-123",
-      API_AUTH_TOKEN: "t-456",
-      API_AUTH_USERNAME: "user",
-      API_AUTH_PASSWORD: "pass",
-      API_AUTH_HEADERS: '{"X-Proxy-Auth":"abc"}',
+      API_HEADERS: '{"X-Proxy-Auth":"abc"}',
     });
-    assert.equal(config.auth?.apiKey, "k-123");
-    assert.equal(config.auth?.bearerToken, "t-456");
-    assert.equal(config.auth?.username, "user");
-    assert.equal(config.auth?.password, "pass");
-    assert.deepEqual(config.auth?.headers, { "X-Proxy-Auth": "abc" });
+    assert.deepEqual(config.headers, { "X-Proxy-Auth": "abc" });
   });
 
-  it("leaves auth unset when no credentials are provided", () => {
+  it("leaves headers unset when none are provided", () => {
     const config = loadConfig({ OPENAPI_SOURCE: "./openapi.yaml" });
-    assert.equal(config.auth, undefined);
+    assert.equal(config.headers, undefined);
   });
 
-  it("rejects malformed API_AUTH_HEADERS", () => {
+  it("rejects malformed API_HEADERS", () => {
     assert.throws(
-      () => loadConfig({ OPENAPI_SOURCE: "./openapi.yaml", API_AUTH_HEADERS: "not json" }),
+      () => loadConfig({ OPENAPI_SOURCE: "./openapi.yaml", API_HEADERS: "not json" }),
       ConfigError,
     );
   });
